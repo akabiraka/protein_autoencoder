@@ -18,17 +18,17 @@ class FastaDataset(Dataset):
 
     def __init__(self, filename, encoding_mode='numeric', pad_mode=None):
         """
-        encoding_mode = "numeric", 'one_hot'
+        encoding_mode = 'numeric', 'one_hot'
         pad_mode = None, 'front', 'end'
         """
-        super(FastaDataset, self).__init__()vg
+        super(FastaDataset, self).__init__()
         file = open(filename)
         self.records = list(enumerate(parse(file, CONSTANTS.FASTA)))
         self.encoding_mode = encoding_mode
-        self.AALetters = CONSTANTS.AMINO_ACID_22
+        self.AALetters = CONSTANTS.AMINO_ACID
         self.AA_c2i_dict, self.AA_i2c_dict = self.__get_amino_acid_seq_dict()
         self.n_letters = len(self.AALetters)
-        self.max_len, self.min_len, self.avg_len = self.get_max_length()
+        self.max_len = self.get_max_length()
         self.pad_mode = pad_mode
 
     def __len__(self):
@@ -38,12 +38,17 @@ class FastaDataset(Dataset):
         id, record = self.records[i]
         embedding = 0.0
         if self.encoding_mode == 'numeric':
-            embedding = self.seq_to_numeric(record.seq, self.pad_mode)
+            embedding = self.seq_2_numeric_tensor(record.seq, self.pad_mode)
         elif self.encoding_mode == 'one_hot':
-            embedding = self.seq_2_tensor(record.seq, self.pad_mode)
+            embedding = self.seq_2_one_hot_tensor(record.seq, self.pad_mode)
+
+        embedding = embedding.type(torch.float32)
         return embedding
 
-    def ger_record(self, i):
+    def get_record(self, i):
+        """
+            only works when batch size is 1
+        """
         id, record = self.records[i]
         return record
 
@@ -59,7 +64,7 @@ class FastaDataset(Dataset):
         lengths = []
         for id, record in self.records:
             lengths.append(len(record.seq))
-        return max(lengths), min(lengths), math.floor(sum(lengths) / len(lengths))
+        return max(lengths)
 
     def pad_seq(self, embedding, value=0, mode='front'):
         """
@@ -77,7 +82,7 @@ class FastaDataset(Dataset):
 
         return embedding
 
-    def seq_to_numeric(self, seq, pad_mode=None):
+    def seq_2_numeric_tensor(self, seq, pad_mode=None):
         numeric = []
         for i, letter in enumerate(seq):
             if letter not in self.AA_c2i_dict:
@@ -85,7 +90,7 @@ class FastaDataset(Dataset):
                 return
             numeric.append(self.AA_c2i_dict.get(letter))
         embedding = self.pad_seq(numeric, mode=pad_mode)
-        return torch.from_numpy(np.array(embedding))
+        return torch.tensor(embedding)
 
     def letter_2_tensor(self, letter):
         embedding = torch.zeros(1, self.n_letters)
@@ -104,7 +109,7 @@ class FastaDataset(Dataset):
 
         return embedding
 
-    def seq_2_tensor(self, seq, pad_mode=None):
-        numeric = self.seq_to_numeric(seq, pad_mode)
-        one_hot = F.one_hot(numeric, num_classes=self.n_letters)
+    def seq_2_one_hot_tensor(self, seq, pad_mode=None):
+        numeric = self.seq_2_numeric_tensor(seq, pad_mode)
+        one_hot = F.one_hot(torch.tensor(numeric), num_classes=self.n_letters)
         return one_hot
